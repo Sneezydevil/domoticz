@@ -655,11 +655,13 @@ bool CPhilipsHue::GetGroups(const Json::Value &root)
 			tstate.level = 0;
 			tstate.sat = 0;
 			tstate.hue = 0;
+			_eHueLightType GType = HLTYPE_NORMAL;
 
 			if (!group["action"]["on"].empty())
 				tstate.on = group["action"]["on"].asBool();
 			if (!group["action"]["bri"].empty())
 			{
+				GType = HLTYPE_DIM;
 				int tbri = group["action"]["bri"].asInt();
 				if ((tbri != 0) && (tbri != 255))
 					tbri += 1; //hue reports 255 as 254
@@ -669,6 +671,11 @@ bool CPhilipsHue::GetGroups(const Json::Value &root)
 				tstate.sat = group["action"]["sat"].asInt();
 			if (!group["action"]["hue"].empty())
 				tstate.hue = group["action"]["hue"].asInt();
+			if ((!group["action"]["sat"].empty()) && (!group["action"]["hue"].empty()))
+			{
+				//Group with hue/sat control
+				GType = HLTYPE_RGBW;
+			}
 			
 			bool bDoSend = true;
 			if (m_groups.find(gID) != m_groups.end())
@@ -688,7 +695,7 @@ bool CPhilipsHue::GetGroups(const Json::Value &root)
 			if (bDoSend)
 			{
 				std::string Name = "Group " + group["name"].asString();
-				InsertUpdateSwitch(1000 + gID, HLTYPE_RGBW, tstate.on, tstate.level, tstate.sat, tstate.hue, Name, "");
+				InsertUpdateSwitch(1000 + gID, GType, tstate.on, tstate.level, tstate.sat, tstate.hue, Name, "");
 			}
 		}
 	}
