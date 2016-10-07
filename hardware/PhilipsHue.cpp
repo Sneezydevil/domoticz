@@ -446,7 +446,14 @@ void CPhilipsHue::InsertUpdateSwitch(const int NodeID, const _eHueLightType LTyp
 	{
 		//Send as Lighting 2
 		char szID[10];
-		sprintf(szID, "%X%02X%02X%02X", 0, 0, 0, NodeID);
+		if (NodeID < 1000)
+		{
+			sprintf(szID, "%X%02X%02X%02X", 0, 0, 0, NodeID);	
+		}
+		else
+		{
+			sprintf(szID, "%08x", (unsigned int)NodeID);	
+		}
 		unsigned char unitcode = 1;
 		int cmd = (bIsOn ? light2_sOn : light2_sOff);
 		int level = 0;
