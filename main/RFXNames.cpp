@@ -192,6 +192,7 @@ const char *Hardware_Type_Desc(int hType)
 		{ HTYPE_EVOHOME_SCRIPT, "Evohome via script" },
 		{ HTYPE_MySensorsUSB, "MySensors Gateway USB" },
 		{ HTYPE_MySensorsTCP, "MySensors Gateway with LAN interface" },
+		{ HTYPE_MySensorsMQTT, "MySensors Gateway with MQTT interface" },
 		{ HTYPE_MQTT, "MQTT Client Gateway with LAN interface" },
 		{ HTYPE_FRITZBOX, "Fritzbox Callmonitor via LAN interface" },
 		{ HTYPE_ETH8020, "ETH8020 Relay board with LAN interface" },
@@ -236,7 +237,10 @@ const char *Hardware_Type_Desc(int hType)
 		{ HTYPE_Daikin, "Daikin Airconditioning with LAN (HTTP) interface" },
 		{ HTYPE_HEOS, "HEOS by DENON" },
 		{ HTYPE_MultiFun, "MultiFun LAN" },
-		
+		{ HTYPE_ZIBLUEUSB, "ZiBlue RFPlayer USB" },
+		{ HTYPE_ZIBLUETCP, "ZiBlue RFPlayer with LAN interface" },
+		{ HTYPE_Yeelight, "YeeLight LED" },
+
 		{ 0, NULL, NULL }
 	};
 	return findTableIDSingle1 (Table, hType);
@@ -801,7 +805,8 @@ const char *RFX_Type_SubType_Desc(const unsigned char dType, const unsigned char
 		{ pTypeGeneralSwitch, sSwitchTypeFunkbus, "Funkbus" },
 		{ pTypeGeneralSwitch, sSwitchTypeNice, "Nice" },
 		{ pTypeGeneralSwitch, sSwitchTypeForest, "Forest" },
-		{ pTypeGeneralSwitch, sSwitchBlindsT1, "Legrand MyHome" },
+		{ pTypeGeneralSwitch, sSwitchBlindsT1, "Legrand MyHome Blind" },
+		{ pTypeGeneralSwitch, sSwitchLightT1, "Legrand MyHome Light" },
 		{ pTypeGeneralSwitch, sSwitchMC145026, "MC145026" },
 		{ pTypeGeneralSwitch, sSwitchLobeco, "Lobeco" },
 		{ pTypeGeneralSwitch, sSwitchFriedland, "Friedland" },
@@ -812,6 +817,16 @@ const char *RFX_Type_SubType_Desc(const unsigned char dType, const unsigned char
 		{ pTypeGeneralSwitch, sSwitchMiLightv1, "MiLightv1" },
 		{ pTypeGeneralSwitch, sSwitchMiLightv2, "MiLightv2" },
 		{ pTypeGeneralSwitch, sSwitchHT6P20, "HT6P20" },
+		{ pTypeGeneralSwitch, sSwitchTypeDoitrand, "Doitrand" },
+		{ pTypeGeneralSwitch, sSwitchTypeWarema, "Warema" },
+		{ pTypeGeneralSwitch, sSwitchTypeAnsluta, "Ansluta" },
+		{ pTypeGeneralSwitch, sSwitchTypeLivcol, "Livcol" },
+		{ pTypeGeneralSwitch, sSwitchTypeBosch, "Bosch" },
+		{ pTypeGeneralSwitch, sSwitchTypeNingbo, "Ningbo" },
+		{ pTypeGeneralSwitch, sSwitchTypeDitec, "Ditec" },
+		{ pTypeGeneralSwitch, sSwitchTypeSteffen, "Steffen" },
+		{ pTypeGeneralSwitch, sSwitchTypeAlectoSA, "AlectoSA" },
+		{ pTypeGeneralSwitch, sSwitchTypeGPIOset, "GPIOset" },
 		{  0,0,NULL }
 	};
 	return findTableID1ID2(Table, dType, sType);
@@ -1933,6 +1948,9 @@ void GetLightStatus(
 				break;
 			case rfy_sDown:
 				lstatus = "Off";
+				break;
+			case rfy_sStop:
+				lstatus = "Stop";
 				break;
 			}
 		}
@@ -3355,6 +3373,7 @@ bool IsSerialDevice(const _eHardwareTypes htype)
 	case HTYPE_Meteostick:
 	case HTYPE_MySensorsUSB:
 	case HTYPE_RFLINKUSB:
+	case HTYPE_ZIBLUEUSB:
 	case HTYPE_KMTronicUSB:
 	case HTYPE_KMTronic433:
 	case HTYPE_CurrentCostMeter:
