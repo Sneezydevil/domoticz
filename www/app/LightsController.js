@@ -2203,7 +2203,7 @@ define(['app'], function (app) {
 						}
 					}
 					else if (item.SwitchType == "TPI") {
-						var RO=(item.Unit>0)?true:false;
+					    var RO = (item.Unit < 64 || item.Unit > 95) ? true : false;
 						isdimmer=true;
 						if (
 								(item.Status == 'On')
@@ -2749,7 +2749,7 @@ define(['app'], function (app) {
 									 }
 							}
 							else if (item.SwitchType == "TPI") {
-									var RO=(item.Unit>0)?true:false;
+							        var RO = (item.Unit < 64 || item.Unit > 95) ? true : false;
 									bIsDimmer=true;
 									if (item.Status == 'On')
 									{
@@ -2834,7 +2834,7 @@ define(['app'], function (app) {
 					}
 					else if (item.SwitchType == "TPI") {
 						xhtm+='<br><br><div style="margin-left:60px;" class="dimslider" id="slider" data-idx="' + item.idx + '" data-type="relay" data-maxlevel="' + item.MaxDimLevel + '" data-isprotected="' + item.Protected + '" data-svalue="' + item.LevelInt + '"';
-						if(item.Unit>0)
+						if (item.Unit < 64 || item.Unit > 95)
 							xhtm+=' data-disabled="true"';
 						xhtm+='></div>';
 					}
@@ -3482,13 +3482,21 @@ define(['app'], function (app) {
 					$("#dialog-addmanuallightdevice #fanparams #combocmd3 option:selected").text();
 				mParams+="&id="+ID;
 			}
-			else if ((lighttype==305) || (lighttype==306)) {
-				//OpenWebNet Blinds/light
-				var ID="OpenWebNet";
-				var unitcode=
-					$("#dialog-addmanuallightdevice #openwebnetparams #combocmd1 option:selected").val()+
-					$("#dialog-addmanuallightdevice #openwebnetparams #combocmd2 option:selected").val();
-				mParams+="&id="+ID+"&unitcode="+unitcode;
+			else if (lighttype==305) {
+				//OpenWebNet Blinds
+				var appID= parseInt($("#dialog-addmanuallightdevice #openwebnetparams #combocmd1 option:selected").val()+
+					$("#dialog-addmanuallightdevice #openwebnetparams #combocmd2 option:selected").val());
+                var ID = ("0002" + ("0000" + appID.toString(16)).slice(-4)); // WHO_AUTOMATION
+				var unitcode= "0";
+				mParams+="&id="+ID.toUpperCase()+"&unitcode="+unitcode;
+			}
+			else if (lighttype==306) {
+				//OpenWebNet light
+				var appID= parseInt($("#dialog-addmanuallightdevice #openwebnetparams #combocmd1 option:selected").val()+
+					$("#dialog-addmanuallightdevice #openwebnetparams #combocmd2 option:selected").val());
+                var ID = ("0001" + ("0000" + appID.toString(16)).slice(-4)); // WHO_LIGHTING
+                var unitcode= "0";
+				mParams+="&id="+ID.toUpperCase()+"&unitcode="+unitcode;
 			}
 			else {
 				//AC

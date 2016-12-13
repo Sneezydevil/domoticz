@@ -108,6 +108,8 @@
 #include "../hardware/ZiBlueSerial.h"
 #include "../hardware/ZiBlueTCP.h"
 #include "../hardware/Yeelight.h"
+#include "../hardware/XiaomiGateway.h"
+#include "../hardware/plugins/Plugins.h"
 
 // load notifications configuration
 #include "../notifications/NotificationHelper.h"
@@ -391,6 +393,9 @@ void MainWorker::RemoveDomoticzHardware(int HwdId)
 	if (dpos==-1)
 		return;
 	RemoveDomoticzHardware(m_hardwaredevices[dpos]);
+#ifdef USE_PYTHON_PLUGINS
+	m_pluginsystem.DeregisterPlugin(HwdId);
+#endif
 }
 
 int MainWorker::FindDomoticzHardware(int HwdId)
@@ -622,7 +627,7 @@ bool MainWorker::AddHardwareFromParams(
 		pHardware = new RFXComSerial(ID, SerialPort, 38400);
 		break;
 	case HTYPE_P1SmartMeter:
-		pHardware = new P1MeterSerial(ID,SerialPort, (Mode1==1) ? 115200 : 9600, Mode2);
+		pHardware = new P1MeterSerial(ID, SerialPort, (Mode1 == 1) ? 115200 : 9600, (Mode2 != 0));
 		break;
 	case HTYPE_Rego6XX:
 		pHardware = new CRego6XXSerial(ID,SerialPort, Mode1);
@@ -698,7 +703,7 @@ bool MainWorker::AddHardwareFromParams(
 		break;
 	case HTYPE_P1SmartMeterLAN:
 		//LAN
-		pHardware = new P1MeterTCP(ID, Address, Port, Mode2);
+		pHardware = new P1MeterTCP(ID, Address, Port, (Mode2 != 0));
 		break;
 	case HTYPE_WOL:
 		//LAN
@@ -818,21 +823,24 @@ bool MainWorker::AddHardwareFromParams(
 #endif
 		break;
 	case HTYPE_VOLCRAFTCO20:
-		//Voltcrafr CO-20 Air Quality
+		//Voltcraft CO-20 Air Quality
 #ifdef WITH_LIBUSB
 		pHardware = new CVolcraftCO20(ID);
 #endif
 		break;
 #endif
 	case HTYPE_RaspberryBMP085:
-		pHardware = new I2C(ID,1);
+		pHardware = new I2C(ID, I2C::I2CTYPE_BMP085, 0);
 		break;
 	case HTYPE_RaspberryHTU21D:
-		pHardware = new I2C(ID,2);
+		pHardware = new I2C(ID, I2C::I2CTYPE_HTU21D, 0);
 		break;
 	case HTYPE_RaspberryTSL2561:
-		pHardware = new I2C(ID,3);
+		pHardware = new I2C(ID, I2C::I2CTYPE_TSL2561, 0);
 		break;
+	case HTYPE_RaspberryPCF8574:
+		pHardware = new I2C(ID, I2C::I2CTYPE_PCF8574, Port);
+		break; 
 	case HTYPE_Wunderground:
 		pHardware = new CWunderground(ID,Username,Password);
 		break;
@@ -884,7 +892,7 @@ bool MainWorker::AddHardwareFromParams(
 		pHardware = new CPhilipsHue(ID, Address, Port, Username);
 		break;
 	case HTYPE_HARMONY_HUB:
-		pHardware = new CHarmonyHub(ID, Address, Port, Username, Password);
+		pHardware = new CHarmonyHub(ID, Address, Port);
 		break;
 	case HTYPE_PVOUTPUT_INPUT:
 		pHardware = new CPVOutputInput(ID,Username,Password);
@@ -941,6 +949,14 @@ bool MainWorker::AddHardwareFromParams(
 	case HTYPE_Yeelight:
 		pHardware = new Yeelight(ID);
 		break;
+	case HTYPE_PythonPlugin:
+#ifdef USE_PYTHON_PLUGINS
+		pHardware = m_pluginsystem.RegisterPlugin(ID, Name, Filename);
+#endif
+    break;
+	case HTYPE_XiaomiGateway:
+		pHardware = new XiaomiGateway(ID);
+		break;
 	}
 
 	if (pHardware)
@@ -967,6 +983,9 @@ bool MainWorker::Start()
 	m_notifications.Init();
 	GetSunSettings();
 	GetAvailableWebThemes();
+#ifdef USE_PYTHON_PLUGINS
+	m_pluginsystem.StartPluginSystem();
+#endif
 	AddAllDomoticzHardware();
 	m_datapush.Start();
 	m_httppush.Start();
@@ -1003,6 +1022,9 @@ bool MainWorker::Stop()
 		m_datapush.Stop();
 		m_httppush.Stop();
 		m_googlepubsubpush.Stop();
+#ifdef USE_PYTHON_PLUGINS
+		m_pluginsystem.StopPluginSystem();
+#endif
 
 		//    m_cameras.StopCameraGrabber();
 
@@ -1426,6 +1448,9 @@ void MainWorker::Do_Work()
 			{
 				m_bStartHardware=false;
 				StartDomoticzHardware();
+#ifdef USE_PYTHON_PLUGINS
+				m_pluginsystem.AllPluginsStarted();
+#endif
 				ParseRFXLogFile();
 				m_eventsystem.StartEventSystem();
 			}
@@ -1469,7 +1494,7 @@ void MainWorker::Do_Work()
 
 		if (ltime.tm_min!=m_ScheduleLastMinute)
 		{
-			if (atime - m_ScheduleLastMinuteTime > 30) //avoid RTC/NTP clock drifts
+			if (difftime(atime,m_ScheduleLastMinuteTime) > 30) //avoid RTC/NTP clock drifts
 			{
 				m_ScheduleLastMinuteTime = atime;
 				m_ScheduleLastMinute = ltime.tm_min;
@@ -1501,7 +1526,7 @@ void MainWorker::Do_Work()
 		}
 		if (ltime.tm_hour!=m_ScheduleLastHour)
 		{
-			if (atime - m_ScheduleLastHourTime > 30 * 60) //avoid RTC/NTP clock drifts
+			if (difftime(atime,m_ScheduleLastHourTime) > 30 * 60) //avoid RTC/NTP clock drifts
 			{
 				m_ScheduleLastHourTime = atime;
 				m_ScheduleLastHour = ltime.tm_hour;
@@ -6267,6 +6292,13 @@ void MainWorker::decode_evohome3(const int HwdID, const _eHardwareTypes HwdType,
 			return;
 		unsigned char cur_cmnd=atoi(result[0][5].c_str());
 		BatteryLevel = atoi(result[0][7].c_str());
+		
+		if (pEvo->EVOHOME3.updatetype == CEvohome::updBattery)
+		{
+			BatteryLevel = pEvo->EVOHOME3.battery_level;
+			szDemand = result[0][6];
+			cmnd=(atoi(szDemand.c_str())>0)?light1_sOn:light1_sOff;
+		}
 		if(Unit==0xFF)
 		{
 			Unit=atoi(result[0][2].c_str());
@@ -6286,10 +6318,9 @@ void MainWorker::decode_evohome3(const int HwdID, const _eHardwareTypes HwdType,
 		bNewDev=true;
 		if(pEvo->EVOHOME3.demand==0xFF)//0418 allows us to associate unit and deviceid but no state information other messages only contain one or the other
 			szDemand="0";
+		if (pEvo->EVOHOME3.updatetype == CEvohome::updBattery)
+			BatteryLevel = pEvo->EVOHOME3.battery_level;
 	}
-
-	if (pEvo->EVOHOME3.updatetype == CEvohome::updBattery)
-		BatteryLevel = pEvo->EVOHOME3.battery_level;
 
 	uint64_t DevRowIdx=m_sql.UpdateValue(HwdID, ID.c_str(),Unit,devType,subType,SignalLevel,BatteryLevel,cmnd,szDemand.c_str(), procResult.DeviceName);
 	if (DevRowIdx == -1)
@@ -10279,6 +10310,18 @@ bool MainWorker::SwitchLightInt(const std::vector<std::string> &sd, std::string 
 			switchcmd="Off";
 	}
 
+	//
+	//	For plugins all the specific logic below is irrelevent
+	//	so just send the full details to the plugin so that it can take appropriate action
+	//
+	if (pHardware->HwdType == HTYPE_PythonPlugin)
+	{
+#ifdef USE_PYTHON_PLUGINS
+		((Plugins::CPlugin*)m_hardwaredevices[hindex])->SendCommand(Unit, switchcmd, level, hue);
+#endif
+		return true;
+	}
+
 	switch (dType)
 	{
 	case pTypeLighting1:
@@ -12312,6 +12355,16 @@ bool MainWorker::UpdateDevice(const int HardwareID, const std::string &DeviceID,
 				gDevice.id = unit;
 				gDevice.floatval1 = (float)atof(sValue.c_str());
 				gDevice.intval1 = static_cast<int>(ID);
+				DecodeRXMessage(pHardware, (const unsigned char *)&gDevice, NULL, batterylevel);
+				return true;
+			}
+			else if (subType == sTypeSoilMoisture)
+			{
+				_tGeneralDevice gDevice;
+				gDevice.subtype = subType;
+				gDevice.id = unit;
+				gDevice.intval1 = static_cast<int>(ID);
+				gDevice.intval2 = nValue;
 				DecodeRXMessage(pHardware, (const unsigned char *)&gDevice, NULL, batterylevel);
 				return true;
 			}
