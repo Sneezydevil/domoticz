@@ -7,6 +7,7 @@
 #include "ASyncTCP.h"
 #include <string>
 #include <vector>
+#include <map>
 #include "../json/json.h"
 
 class CHEOS : public CDomoticzHardwareBase, ASyncTCP
@@ -24,6 +25,14 @@ class CHEOS : public CDomoticzHardwareBase, ASyncTCP
 	
 public:
 
+	struct HEOSBrowsable
+	{
+		int				ID;
+		int				CID;
+		int				MID;
+		std::string		Name;
+	};
+	
 	CHEOS(const int ID, const std::string &IPAddress, const unsigned short usIPPort, const std::string &User, const std::string &Pwd, const int PollIntervalsec, const int PingTimeoutms);
 	~CHEOS(void);
 	
@@ -31,7 +40,12 @@ public:
 	void SetSettings(const int PollIntervalsec, const int PingTimeoutms);
 	void SendCommand(const std::string&);
 	void SendCommand(const std::string&, const int iValue);
+	void SendCommand(const std::string&, const int iValue, const int iValue2);
 	bool isConnected(){ return mIsConnected; };
+	
+	std::vector<HEOSBrowsable> GetFavorites();
+	std::vector<HEOSBrowsable> GetPlaylists();
+	std::vector<HEOSBrowsable> GetHistory();
 
 public:
 	// signals
@@ -42,7 +56,10 @@ private:
 	_eNotificationTypes	NotificationType(_eMediaStatus nStatus);
 
 	std::vector<HEOSNode> m_nodes;
-
+	std::vector<HEOSBrowsable> m_favorites;
+	std::vector<HEOSBrowsable> m_playlists;
+	std::vector<HEOSBrowsable> m_history;
+	
 	int m_retrycntr;
 	bool StartHardware();
 	bool StopHardware();
@@ -53,6 +70,7 @@ private:
 	
 	int m_iPollInterval;
 	int m_iPingTimeoutms;
+	std::map< std::string, int > m_sourceIds;
 	std::string	m_IP;
 	std::string m_User;
 	std::string m_Pwd;

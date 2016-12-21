@@ -248,6 +248,7 @@ private:
 	void Cmd_AddMobileDevice(WebEmSession & session, const request& req, Json::Value &root);
 	void Cmd_DeleteMobileDevice(WebEmSession & session, const request& req, Json::Value &root);
 	void Cmd_HEOSSetMode(WebEmSession & session, const request& req, Json::Value &root);
+	void Cmd_HEOSGetBrowsable(WebEmSession & session, const request& req, Json::Value &root);
 	void Cmd_HEOSMediaCommand(WebEmSession & session, const request& req, Json::Value &root);
 	void Cmd_AddYeeLight(WebEmSession & session, const request& req, Json::Value &root);
 

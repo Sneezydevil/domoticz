@@ -179,6 +179,25 @@ void CHEOS::ParseLine()
 									}
 								}
 							}
+							else if (root["heos"]["command"] == "browse/get_music_sources")
+							{
+								if (root.isMember("payload"))
+								{
+									int key = 0;
+									for( Json::ValueIterator itr = root["payload"].begin() ; itr != root["payload"].end() ; itr++ ) {		
+
+										if (root["payload"][key].isMember("name") && root["payload"][key].isMember("sid"))
+										{
+											m_sourceIds[root["payload"][key]["name"].asCString()] = root["payload"][key]["sid"].asInt();
+										}
+										else
+										{
+											if (DEBUG_LOGGING) _log.Log(LOG_NORM, "DENON by HEOS: No music sources found.");
+										}
+										key++;
+									}
+								}
+							}
 						}
 					}
 					else
@@ -321,6 +340,45 @@ void CHEOS::SendCommand(const std::string &command)
 	if (command == "getGroups")
 	{
 		ssMessage << "heos://group/get_groups";
+		sMessage = ssMessage.str();
+		systemCall = true;
+	}
+	
+	/* Account related commands */
+
+	if (command == "checkAccount")
+	{
+		ssMessage << "heos://system/check_account";
+		sMessage = ssMessage.str();
+		systemCall = true;
+	}
+	
+	if (command == "signIn" && !m_User.empty() && !m_Pwd.empty())
+	{
+		ssMessage << "heos://system/sign_in?un=" << m_User << "&pw=" << m_Pwd << "";
+		sMessage = ssMessage.str();
+		systemCall = true;
+	}	
+
+	if (command == "signOut")
+	{
+		ssMessage << "heos://system/sign_out";
+		sMessage = ssMessage.str();
+		systemCall = true;
+	}
+	
+	/* Browse related commands */
+
+	if (command == "getSources")
+	{
+		ssMessage << "heos://browse/get_music_sources";
+		sMessage = ssMessage.str();
+		systemCall = true;
+	}	
+
+	if (command == "getFavorites" && m_sourceIds["Favorites"] > 0)
+	{
+		ssMessage << "heos://browse/browse?sid=" << m_sourceIds["Favorites"] << "";
 		sMessage = ssMessage.str();
 		systemCall = true;
 	}
@@ -500,6 +558,47 @@ void CHEOS::SendCommand(const std::string &command, const int iValue)
 	}
 }
 
+void CHEOS::SendCommand(const std::string &command, const int iValue, const int iValue2)
+{
+	std::stringstream ssMessage;
+	std::string	sMessage;
+	bool systemCall = false;
+
+	if (command == "playFavorite")
+	{
+		SendCommand("signIn");
+		ssMessage << "heos://browse/play_preset?pid=" << iValue << "&preset=" << iValue2 << "";
+		sMessage = ssMessage.str();
+		systemCall = true;
+	}
+	
+	/* Process */
+	if (DEBUG_LOGGING) _log.Log(LOG_NORM, "DENON by HEOS: Debug: '%s'.", sMessage.c_str());
+
+	if (sMessage.length())
+	{
+		if (WriteInt(sMessage))
+		{
+			if (systemCall)
+			{
+				if (DEBUG_LOGGING) _log.Log(LOG_NORM, "HEOS by DENON: Sent command: '%s'.", sMessage.c_str());	
+			}
+			else
+			{
+				_log.Log(LOG_NORM, "HEOS by DENON: Sent command: '%s'.", sMessage.c_str());				
+			} 			
+		}
+		else
+		{
+			if (DEBUG_LOGGING) _log.Log(LOG_NORM, "HEOS by DENON: Not Connected - Message not sent: '%s'.", sMessage.c_str());
+		}
+	}
+	else
+	{
+		_log.Log(LOG_ERROR, "HEOS by DENON: Command: '%s'. Unknown command.", command.c_str());
+	}
+}
+
 void CHEOS::Do_Work()
 {
 
@@ -543,6 +642,11 @@ void CHEOS::Do_Work()
 					bCheckedForPlayers = true;
 					// Enable event changes
 					SendCommand("registerForEvents");
+					// Sign in
+					SendCommand("signIn");
+					sleep_seconds(3);
+					// Get Music Sources
+					SendCommand("getSources");
 				}
 				if (sec_counter % 30 == 0 && m_lastUpdate >= 30)//updates every 30 seconds
 				{
@@ -691,18 +795,6 @@ void CHEOS::ParseData(const unsigned char *pData, int Len)
 		ii++;
 	}
 }
-
-/*
-bool CHEOS::WriteInt(const unsigned char *pData, const unsigned char Len)
-{
-	if (!mIsConnected)
-	{
-		return false;
-	}
-	write(pData, Len);
-	return true;
-}
-*/
 
 bool CHEOS::WriteInt(const std::string &sendStr)
 {
@@ -868,6 +960,20 @@ void CHEOS::ReloadNodes()
 	}	
 }
 
+std::vector<CHEOS::HEOSBrowsable> CHEOS::GetFavorites()
+{
+	return m_favorites;
+}
+
+std::vector<CHEOS::HEOSBrowsable> CHEOS::GetPlaylists()
+{
+	return m_playlists;
+}
+
+std::vector<CHEOS::HEOSBrowsable> CHEOS::GetHistory()
+{
+	return m_history;
+}
 
 //Webserver helpers
 namespace http {
@@ -905,14 +1011,76 @@ namespace http {
 			m_sql.safe_query("UPDATE Hardware SET Mode1=%d, Mode2=%d WHERE (ID == '%q')", iMode1, iMode2, hwid.c_str());
 			pHardware->SetSettings(iMode1, iMode2);
 		}
-	
-		void CWebServer::Cmd_HEOSMediaCommand(WebEmSession & session, const request& req, Json::Value &root)
+
+		void CWebServer::Cmd_HEOSGetBrowsable(WebEmSession & session, const request& req, Json::Value &root)
 		{
 			std::string sIdx = request::findValue(&req, "idx");
 			std::string sAction = request::findValue(&req, "action");
 			if (sIdx.empty())
 				return;
 			int idx = atoi(sIdx.c_str());
+			root["status"] = "OK";
+			root["title"] = "HEOSGetBrowsable";
+
+			std::vector<std::vector<std::string> > result;
+			result = m_sql.safe_query("SELECT DS.SwitchType, DS.DeviceID, H.Type, H.ID FROM DeviceStatus DS, Hardware H WHERE (DS.ID=='%q') AND (DS.HardwareID == H.ID)", sIdx.c_str());
+
+
+			if (result.size() == 1)
+			{
+				_eSwitchType	sType = (_eSwitchType)atoi(result[0][0].c_str());
+				int PlayerID = atoi(result[0][1].c_str());
+				_eHardwareTypes	hType = (_eHardwareTypes)atoi(result[0][2].c_str());
+				int HwID = atoi(result[0][3].c_str());
+				// Is the device a media Player of type HEOS?
+				if (hType == HTYPE_HEOS)
+				{
+
+					CDomoticzHardwareBase *pBaseHardware = m_mainworker.GetHardwareByIDType(result[0][3].c_str(), HTYPE_HEOS);
+					if (pBaseHardware == NULL)
+						return;
+					CHEOS *pHEOS = reinterpret_cast<CHEOS*>(pBaseHardware);
+					
+					if(sAction == "getFavorites")
+					{
+						std::vector<CLogitechMediaServer::HEOSBrowsable> m_browsable = pHEOS->GetFavorites();
+					}
+					else if(sAction == "getPlaylists")
+					{
+						std::vector<CLogitechMediaServer::HEOSBrowsable> m_browsable = pHEOS->GetPlaylists();
+					} 
+					else if(sAction == "getHistory")
+					{
+						std::vector<CLogitechMediaServer::HEOSBrowsable> m_browsable = pHEOS->GetHistory();
+					}
+					else
+					{
+						return;
+					}
+					std::vector<CLogitechMediaServer::HEOSBrowsable>::const_iterator itt;
+
+					int ii = 0;
+					for (itt = m_browsable.begin(); itt != m_browsable.end(); ++itt) {
+						root["result"][ii]["id"] = itt->ID;
+						root["result"][ii]["cid"] = itt->CID;
+						root["result"][ii]["cid"] = itt->MID;
+						root["result"][ii]["Name"] = itt->Name;
+						ii++;
+					}
+
+				}
+			}
+		}
+		
+		void CWebServer::Cmd_HEOSMediaCommand(WebEmSession & session, const request& req, Json::Value &root)
+		{
+			std::string sIdx = request::findValue(&req, "idx");
+			std::string sAction = request::findValue(&req, "action");
+			std::string sActionId = request::findValue(&req, "aid");
+			if (sIdx.empty())
+				return;
+			int idx = atoi(sIdx.c_str());
+						
 			root["status"] = "OK";
 			root["title"] = "HEOSMediaCommand";
 
@@ -929,16 +1097,22 @@ namespace http {
 				// Is the device a media Player?
 				if (sType == STYPE_Media)
 				{
-					switch (hType) {
-					case HTYPE_HEOS:
+					if (hType == HTYPE_HEOS)
+					{
 						CDomoticzHardwareBase *pBaseHardware = m_mainworker.GetHardwareByIDType(result[0][3].c_str(), HTYPE_HEOS);
 						if (pBaseHardware == NULL)
 							return;
 						CHEOS *pHEOS = reinterpret_cast<CHEOS*>(pBaseHardware);
-
-						pHEOS->SendCommand(sAction, PlayerID);
-						break;
-						// put other players here ...
+			
+						if (!sActionId.empty())
+						{
+							int ActionID = atoi(sActionId.c_str());
+							pHEOS->SendCommand(sAction, PlayerID, ActionID);
+						}
+						else
+						{
+							pHEOS->SendCommand(sAction, PlayerID);
+						}					
 					}
 				}
 			}
